@@ -304,7 +304,7 @@ else:
   st.pyplot(fig)
 
   # Output Results
-  st.subheader("📊 Execution Results")
+  st.subheader("Execution Results")
   col1, col2, col3 = st.columns(3)
   col1.metric("Selected Algorithm", alg_title)
   col2.metric(
