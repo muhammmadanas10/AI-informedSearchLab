@@ -10,12 +10,12 @@ st.set_page_config(
 
 st.title("Interactive Route Planning & Search Visualizer")
 st.write(
-    "Explore Greedy Best-First Search (GBFS) and A* Search on real-world route"
-    " graphs."
+    "Explore Greedy Best-First Search (GBFS), A*, and Weighted A* Search across"
+    " all lab tasks."
 )
 
 # ---------------------------------------------------------
-# Graph Data Setup
+# Graph Data Setup (Tasks 1 to 4)
 # ---------------------------------------------------------
 graph_options = {
     "Warehouse Robot (Task 1)": {
@@ -82,12 +82,33 @@ graph_options = {
         "default_start": "Pharmacy",
         "default_goal": "Emergency_Ward",
     },
+    "Autonomous Delivery Drone (Task 4)": {
+        "locations": {
+            "Distribution_Center": (0, 0),
+            "Zone_A": (2, 1),
+            "Zone_B": (1, 4),
+            "Zone_C": (4, 2),
+            "Zone_D": (5, 5),
+            "Customer_Building": (8, 6),
+        },
+        "edges": [
+            ("Distribution_Center", "Zone_B", 3.0),
+            ("Distribution_Center", "Zone_A", 2.2),
+            ("Zone_B", "Zone_D", 5.0),
+            ("Zone_A", "Zone_C", 2.2),
+            ("Zone_C", "Zone_D", 3.2),
+            ("Zone_C", "Customer_Building", 6.0),
+            ("Zone_D", "Customer_Building", 3.2),
+        ],
+        "default_start": "Distribution_Center",
+        "default_goal": "Customer_Building",
+    },
 }
 
 # ---------------------------------------------------------
 # Sidebar Controls
 # ---------------------------------------------------------
-st.sidebar.header("⚙️ Configuration")
+st.sidebar.header("Configuration")
 
 selected_graph_name = st.sidebar.selectbox(
     "Select Scenario/Graph", list(graph_options.keys())
@@ -108,20 +129,31 @@ goal_node = st.sidebar.selectbox(
     index=node_list.index(selected_graph["default_goal"]),
 )
 algorithm = st.sidebar.selectbox(
-    "Select Search Algorithm", ["Greedy Best-First Search (GBFS)", "A* Search"]
+    "Select Search Algorithm",
+    ["Greedy Best-First Search (GBFS)", "A* / Weighted A* Search"],
 )
 
+weight = 1.0
+if algorithm == "A* / Weighted A* Search":
+  weight = st.sidebar.slider(
+      "Heuristic Weight (w)",
+      min_value=1.0,
+      max_value=3.0,
+      value=1.0,
+      step=0.5,
+      help="w=1.0 is standard A*. w>1.0 gives more weight to the heuristic.",
+  )
 
 # Build NetworkX DiGraph
 G = nx.DiGraph()
 for node, pos in locations.items():
   G.add_node(node, pos=pos)
-for u, v, weight in selected_graph["edges"]:
-  G.add_edge(u, v, weight=weight)
+for u, v, w_edge in selected_graph["edges"]:
+  G.add_edge(u, v, weight=w_edge)
 
 
 # ---------------------------------------------------------
-# Helper Functions
+# Search Algorithms
 # ---------------------------------------------------------
 def heuristic(node, target):
   x1, y1 = locations[node]
@@ -163,13 +195,13 @@ def run_gbfs(graph, start, goal):
   return expansion_sequence, [], 0.0
 
 
-def run_a_star(graph, start, goal):
+def run_weighted_a_star(graph, start, goal, w):
   pq = []
   count = 0
   g_costs = {node: float("inf") for node in graph.nodes()}
   g_costs[start] = 0.0
   f_costs = {node: float("inf") for node in graph.nodes()}
-  f_costs[start] = heuristic(start, goal)
+  f_costs[start] = w * heuristic(start, goal)
 
   heapq.heappush(pq, (f_costs[start], count, 0.0, start, [start]))
   visited = set()
@@ -186,11 +218,11 @@ def run_a_star(graph, start, goal):
       return expansion_sequence, path, g
 
     for neighbor in graph.neighbors(current):
-      weight = graph[current][neighbor]["weight"]
-      tentative_g = g + weight
+      edge_cost = graph[current][neighbor]["weight"]
+      tentative_g = g + edge_cost
       if tentative_g < g_costs[neighbor]:
         g_costs[neighbor] = tentative_g
-        f_costs[neighbor] = tentative_g + heuristic(neighbor, goal)
+        f_costs[neighbor] = tentative_g + (w * heuristic(neighbor, goal))
         count += 1
         heapq.heappush(
             pq, (f_costs[neighbor], count, tentative_g, neighbor, path + [neighbor])
@@ -209,8 +241,8 @@ else:
         G, start_node, goal_node
     )
   else:
-    expansion_seq, solution_path, total_cost = run_a_star(
-        G, start_node, goal_node
+    expansion_seq, solution_path, total_cost = run_weighted_a_star(
+        G, start_node, goal_node, weight
     )
 
   # Display Visualization
@@ -232,7 +264,7 @@ else:
       node_colors.append("lightblue")
 
   nx.draw_networkx_nodes(G, pos, node_size=2200, node_color=node_colors, ax=ax)
-  nx.draw_networkx_labels(G, pos, font_size=9, font_weight="bold", ax=ax)
+  nx.draw_networkx_labels(G, pos, font_size=8, font_weight="bold", ax=ax)
   nx.draw_networkx_edges(
       G,
       pos,
@@ -258,9 +290,12 @@ else:
   edge_labels = nx.get_edge_attributes(G, "weight")
   nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=10, ax=ax)
 
-  plt.title(
-      f"{selected_graph_name} — {algorithm}", fontsize=14, fontweight="bold"
+  alg_title = (
+      algorithm
+      if algorithm == "Greedy Best-First Search (GBFS)"
+      else f"Weighted A* (w={weight})"
   )
+  plt.title(f"{selected_graph_name} — {alg_title}", fontsize=13, fontweight="bold")
   plt.xlabel("X Coordinates")
   plt.ylabel("Y Coordinates")
   plt.grid(True, linestyle="--", alpha=0.5)
@@ -268,10 +303,10 @@ else:
 
   st.pyplot(fig)
 
-  # Output Summary Details
+  # Output Results
   st.subheader("📊 Execution Results")
   col1, col2, col3 = st.columns(3)
-  col1.metric("Selected Algorithm", algorithm.split()[0])
+  col1.metric("Selected Algorithm", alg_title)
   col2.metric(
       "Total Path Cost",
       f"{total_cost:.2f} km" if solution_path else "No Path Found",
